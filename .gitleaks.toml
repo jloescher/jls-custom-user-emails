@@ -1,0 +1,14 @@
+# Minimal gitleaks config for this repository.
+# Add allowlist entries only after a finding is confirmed as a false positive
+# (test fixtures, documented example keys, lockfile hashes).
+# Do not allowlist live credentials.
+
+title = "gitleaks"
+
+# Example (commented) allowlist shape:
+# [allowlist]
+# description = "Confirmed false positives only"
+# paths = [
+#   '''^testdata/''',
+#   '''^.*\.example$''',
+# ]
