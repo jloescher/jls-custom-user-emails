@@ -5,6 +5,9 @@
 
 title = "gitleaks"
 
+[extend]
+useDefault = true
+
 # Example (commented) allowlist shape:
 # [allowlist]
 # description = "Confirmed false positives only"

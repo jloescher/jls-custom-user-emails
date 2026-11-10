@@ -1,8 +1,12 @@
 # gitleaks secret scanning CI
 # - runs on pull_request and on push to the default branch
-# - actions/checkout pinned by full commit SHA (v7.0.1)
+# - scans only new commits (PR base..head, or push before..after);
+#   first push / all-zero before SHA scans just the head commit
+# - actions/checkout pinned by full commit SHA (v4.4.0)
 # - gitleaks official release binary pinned by version + sha256
 # - permissions: contents: read only; no repository secrets required
+# - default runs-on is ubuntu-latest; repos that already use NAS self-hosted
+#   ephemeral runners should set runs-on: [self-hosted, linux, x64, nas-ephemeral]
 name: gitleaks
 
 on:
@@ -20,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
@@ -37,4 +41,33 @@ jobs:
           /tmp/gitleaks version
 
       - name: Run gitleaks
-        run: /tmp/gitleaks detect --redact --no-banner --source "${GITHUB_WORKSPACE}"
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+        run: |
+          set -euo pipefail
+          ZERO="0000000000000000000000000000000000000000"
+          is_sha() { [[ "$1" =~ ^[0-9a-f]{40}$ ]]; }
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            if ! is_sha "${PR_BASE}" || ! is_sha "${PR_HEAD}"; then
+              echo "refusing to scan: missing or invalid PR base/head SHA" >&2
+              exit 2
+            fi
+            LOG_OPTS="${PR_BASE}..${PR_HEAD}"
+          elif [ -z "${PUSH_BEFORE}" ] || [ "${PUSH_BEFORE}" = "${ZERO}" ]; then
+            if ! is_sha "${PUSH_AFTER}"; then
+              echo "refusing to scan: missing or invalid push after SHA" >&2
+              exit 2
+            fi
+            LOG_OPTS="-1 ${PUSH_AFTER}"
+          else
+            if ! is_sha "${PUSH_BEFORE}" || ! is_sha "${PUSH_AFTER}"; then
+              echo "refusing to scan: missing or invalid push before/after SHA" >&2
+              exit 2
+            fi
+            LOG_OPTS="${PUSH_BEFORE}..${PUSH_AFTER}"
+          fi
+          /tmp/gitleaks detect --redact --no-banner --source "${GITHUB_WORKSPACE}" --log-opts="${LOG_OPTS}"
